@@ -20,6 +20,8 @@ class ImageNetDataset(Dataset):
                  transform=transforms.Compose([transforms.Resize((256, 256)), transforms.ToTensor()])) -> None:
         super().__init__()
         self._all_jpegs_path =   get_all_jpegs_in_path(root_folder=data_path)
+        self._all_parent_name = sorted(list(set([path.parent.name for path in self._all_jpegs_path]))) # Gives 1000 labels
+        self._parent_name_to_class_idx =  {s: i for i, s in enumerate(self._all_parent_name)}
         self.transform = transform
         
     def __len__(self) -> int:
@@ -30,11 +32,12 @@ class ImageNetDataset(Dataset):
             idx = idx.tolist()
 
         img_path = self._all_jpegs_path[idx]
+        label   =   self._parent_name_to_class_idx[img_path.parent.name]
         img     =   cv2.imread(str(img_path))
         if self.transform:
             img_pil = Image.fromarray(img.astype('uint8'))
             img = self.transform(img_pil)
-        sample = {'img': img}
+        sample = {'img': img, 'label': label}
 
         return sample 
 
@@ -44,9 +47,10 @@ if __name__ == '__main__':
     dataset = ImageNetDataset(transform=img_tranform)
     for idx in range(5):
         img = dataset[idx]["img"]
+        label = dataset[idx]["label"]
         if isinstance(img, torch.Tensor):
             img = img.permute(1,2,0).numpy()
             img = (img * 255).clip(0, 255).astype(np.uint8)
         print(f"Saving image with shape {img.shape}")
-        cv2.imwrite(f"tmp/{idx}.png", img)
+        cv2.imwrite(f"tmp/{idx}_{label}.png", img)
 
