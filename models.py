@@ -43,16 +43,35 @@ class TimeStepEmbedding(torch.nn.Module):
                             torch.nn.Linear(384, 384),
                         )
 
-    def forward(self, t: int) -> torch.Tensor:
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            timestep__embedding = get_timestep_embedding(t=t).unsqueeze(0)
-        timestep__embedding = self._linear_layer_timestep(timestep__embedding)
+            timestep__embedding = get_timestep_embedding(t=t) # (B, 128)
+        timestep__embedding = self._linear_layer_timestep(timestep__embedding) # (B, d)
         return timestep__embedding
+
+class ContextEmbeddings(torch.nn.Module):
+    '''
+    Concatenating class and time embedding for cross attention
+    '''
+    def __init__(self) -> None:
+        super().__init__()
+        self.timestep_embedding = TimeStepEmbedding()
+        self.class_embedding    = torch.nn.Embedding(1000, 384)
+
+    def forward(self, label:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
+        time_embedding = self.timestep_embedding(t).unsqueeze(1) # (B,1, d)
+        class_embedding =   self.class_embedding(label).unsqueeze(1) # (B,1, d)
+        context_embeddings = torch.cat([time_embedding, class_embedding], dim = 1) # (B, 2, d)
+        return context_embeddings
     
 if __name__ == '__main__':
 
-    t_embed = TimeStepEmbedding()
-    print(t_embed(0).shape)
+    ctx_embedding = ContextEmbeddings()
+    label = torch.tensor([0,1], dtype=torch.int32)
+    t = torch.tensor([3,2])
+    emb = ctx_embedding(label,t)
+    print(emb.shape)
+
 
     # from data import ImageNetDataset
     # from torch.utils.data import DataLoader
