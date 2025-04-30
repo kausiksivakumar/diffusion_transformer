@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from utils import get_sinusoidal_position_embeddings, get_timestep_embedding
-
+import torch.nn.functional as F
 class ImagePatchifyer(torch.nn.Module):
     
     def __init__(self, latent_rep_div: int = 8) -> None:
@@ -63,14 +63,60 @@ class ContextEmbeddings(torch.nn.Module):
         class_embedding =   self.class_embedding(label).unsqueeze(1) # (B,1, d)
         context_embeddings = torch.cat([time_embedding, class_embedding], dim = 1) # (B, 2, d)
         return context_embeddings
-    
-if __name__ == '__main__':
 
-    ctx_embedding = ContextEmbeddings()
-    label = torch.tensor([0,1], dtype=torch.int32)
-    t = torch.tensor([3,2])
-    emb = ctx_embedding(label,t)
-    print(emb.shape)
+class SelfAttention(torch.nn.Module):
+    '''
+    Just one block of self attention
+    '''
+    def __init__(self, embedding_dim: int, head_size:int) -> None:
+        super().__init__()
+        self.q = torch.nn.Linear(embedding_dim, head_size)
+        self.k = torch.nn.Linear(embedding_dim, head_size)
+        self.v = torch.nn.Linear(embedding_dim, head_size)
+    
+    def forward(self, img_embeddings: torch.Tensor) -> torch.Tensor:
+        query_tensor = self.q(img_embeddings) # (B, T, head_size)
+        key_tensor  = self.k(img_embeddings) # (B, T, head_size)
+        value_tensor = self.v(img_embeddings) # (B, T, head_size)
+        B, T, head_size = query_tensor.shape
+        wei = (query_tensor @ key_tensor.permute(0,2,1)) * (head_size**-0.5) # for normalizing softmax
+        wei = F.softmax(wei, dim=-1) # (B, T, T)
+        
+        output = wei @ value_tensor # (B, T, head_size)
+        return output
+
+class DiT(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+if __name__ == '__main__':
+    from data import ImageNetDataset
+    from torch.utils.data import DataLoader
+    from diffusers.models import AutoencoderKL
+    patchifyer = ImagePatchifyer()
+    data = ImageNetDataset()
+    vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+    vae.eval()
+    dataloader = DataLoader(data, batch_size=1,
+                        shuffle=True, num_workers=0)
+    next_img_sample = next(iter(dataloader))    
+    img = next_img_sample["img"]
+    with torch.no_grad():
+        # How to get latent dim
+        z = vae.encode(img).latent_dist.sample() * 0.18215
+    img_embedding = patchifyer(z)
+
+    self_attention = SelfAttention(384, 128)
+    attention_output = self_attention(img_embedding)
+    print(attention_output.shape)
+
+    # output = patchifyer(z)
+
+    # ctx_embedding = ContextEmbeddings()
+    # label = torch.tensor([0,1], dtype=torch.int32)
+    # t = torch.tensor([3,2])
+    # emb = ctx_embedding(label,t)
+    # print(emb.shape)
 
 
     # from data import ImageNetDataset
