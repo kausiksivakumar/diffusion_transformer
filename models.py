@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from utils import get_sinusoidal_position_embeddings
 
 class ImagePatchifyer(torch.nn.Module):
     
@@ -26,8 +27,13 @@ class ImagePatchifyer(torch.nn.Module):
         # Now get patches of size 2
         latent_img_patches = self.unfold(latent_rep).permute(0,2,1) # (B, 256, 16)
         img_tokens = self.linear_layer(latent_img_patches) # (B, T , d) --> (B, T, 384)
-
+        
         # TODO: Add position embeddings
+        B, T, d = img_tokens.shape
+        with torch.no_grad():
+            # No need for gradient of position embeddings 
+            pos_embeddings = get_sinusoidal_position_embeddings(token_dim=T, embedding_dim=d)
+            img_tokens = img_tokens + pos_embeddings
         return img_tokens
 
 
@@ -41,4 +47,4 @@ if __name__ == '__main__':
     next_img_sample = next(iter(dataloader))
     img = next_img_sample["img"]
     output = patchifyer(img)
-
+    print(output.shape)
