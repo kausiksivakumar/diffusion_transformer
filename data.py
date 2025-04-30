@@ -32,7 +32,7 @@ class ImageNetDataset(Dataset):
             idx = idx.tolist()
 
         img_path = self._all_jpegs_path[idx]
-        label   =   self._parent_name_to_class_idx[img_path.parent.name]
+        label   =   torch.tensor([self._parent_name_to_class_idx[img_path.parent.name]], dtype=torch.int32)
         img     =   cv2.imread(str(img_path))
         if self.transform:
             img_pil = Image.fromarray(img.astype('uint8'))
