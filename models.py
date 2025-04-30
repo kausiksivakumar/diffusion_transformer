@@ -26,11 +26,13 @@ class ImagePatchifyer(torch.nn.Module):
         # Now get patches of size 2
         latent_img_patches = self.unfold(latent_rep).permute(0,2,1) # (B, 256, 16)
         img_tokens = self.linear_layer(latent_img_patches) # (B, T , d) --> (B, T, 384)
+
+        # TODO: Add position embeddings
         return img_tokens
 
 
 if __name__ == '__main__':
-    from data_utils import ImageNetDataset
+    from data import ImageNetDataset
     from torch.utils.data import DataLoader
     patchifyer = ImagePatchifyer()
     data = ImageNetDataset()
