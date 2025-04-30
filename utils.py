@@ -15,5 +15,14 @@ def get_sinusoidal_position_embeddings(token_dim: int, embedding_dim:int) -> tor
 
     return pos_embeddings
 
+def get_timestep_embedding(t:int, embedding_dim:int=128) -> torch.Tensor:
+
+    denominator = torch.pow(10000, 2*torch.arange(0, embedding_dim//2)/embedding_dim)
+    timestep_embedding = torch.zeros(1, embedding_dim)
+    timestep_embedding[:,0::2] = torch.sin(t/denominator)
+    timestep_embedding[:,1::2] = torch.cos(t/denominator)
+    return timestep_embedding
+
 if __name__ == '__main__':
     print(get_sinusoidal_position_embeddings(8, 4))
+    # print(get_timestep_embedding(2, 128))

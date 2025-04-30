@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils import get_sinusoidal_position_embeddings
+from utils import get_sinusoidal_position_embeddings, get_timestep_embedding
 
 class ImagePatchifyer(torch.nn.Module):
     
@@ -32,23 +32,43 @@ class ImagePatchifyer(torch.nn.Module):
             img_tokens = img_tokens + pos_embeddings
         return img_tokens
 
+class TimeStepEmbedding(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        # 128 is the timestep embedding (non learned), the mlp projection adds non-linearity
+        self._linear_layer_timestep = torch.nn.Linear(128, 384)
+        self.timestep_embed = torch.nn.Sequential(
+                            torch.nn.Linear(128, 384),
+                            torch.nn.SiLU(),
+                            torch.nn.Linear(384, 384),
+                        )
 
+    def forward(self, t: int) -> torch.Tensor:
+        with torch.no_grad():
+            timestep__embedding = get_timestep_embedding(t=t).unsqueeze(0)
+        timestep__embedding = self._linear_layer_timestep(timestep__embedding)
+        return timestep__embedding
+    
 if __name__ == '__main__':
-    from data import ImageNetDataset
-    from torch.utils.data import DataLoader
-    from diffusers.models import AutoencoderKL
-    vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
-    vae.eval()
 
-    patchifyer = ImagePatchifyer()
-    data = ImageNetDataset()
-    dataloader = DataLoader(data, batch_size=1,
-                        shuffle=True, num_workers=0)
-    next_img_sample = next(iter(dataloader))
-    img = next_img_sample["img"]
-    with torch.no_grad():
-        # How to get latent dim
-        z = vae.encode(img).latent_dist.sample() * 0.18215
+    t_embed = TimeStepEmbedding()
+    print(t_embed(0).shape)
 
-    output = patchifyer(z)
-    print(output.shape)
+    # from data import ImageNetDataset
+    # from torch.utils.data import DataLoader
+    # from diffusers.models import AutoencoderKL
+    # vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+    # vae.eval()
+
+    # patchifyer = ImagePatchifyer()
+    # data = ImageNetDataset()
+    # dataloader = DataLoader(data, batch_size=1,
+    #                     shuffle=True, num_workers=0)
+    # next_img_sample = next(iter(dataloader))
+    # img = next_img_sample["img"]
+    # with torch.no_grad():
+    #     # How to get latent dim
+    #     z = vae.encode(img).latent_dist.sample() * 0.18215
+
+    # output = patchifyer(z)
+    # print(output.shape)
