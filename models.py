@@ -101,8 +101,19 @@ class MultiHeadedSelfAttention(torch.nn.Module):
 
 
 class DiT(torch.nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, embedding_dim: int, num_heads: int) -> None:
         super().__init__()
+        assert embedding_dim % num_heads == 0, f"Embedding dim must be divisible by num_heads, but got {embedding_dim=}, {num_heads=}"
+        self.layer_norm_bf_mh_slf_attn = torch.nn.LayerNorm(embedding_dim)
+        self.mh_slf_attn = MultiHeadedSelfAttention(embedding_dim, embedding_dim//num_heads, num_heads)
+        
+        self.layer_norm_bf_mh_crs_attn = torch.nn.LayerNorm(embedding_dim)
+
+    def forward(self, img_embedding: torch.Tensor) -> torch.Tensor:
+        # TODO: Forward function must also take in conditions
+        img_embedding = img_embedding + self.mh_slf_attn(self.layer_norm_bf_mh_slf_attn(img_embedding)) 
+
+        return img_embedding
 
 if __name__ == '__main__':
     from data import ImageNetDataset
@@ -124,9 +135,13 @@ if __name__ == '__main__':
     embedding_dim = C
     num_heads = 8
     head_dim = C//8
-    multi_headed_attention = MultiHeadedSelfAttention(embedding_dim, head_dim, num_heads)
-    mha_output = multi_headed_attention(img_embedding)
-    print(mha_output.shape)
+    dit = DiT(embedding_dim, num_heads)
+    output = dit(img_embedding)
+    print(output.shape)
+
+    # multi_headed_attention = MultiHeadedSelfAttention(embedding_dim, head_dim, num_heads)
+    # mha_output = multi_headed_attention(img_embedding)
+    # print(mha_output.shape)
 
     # self_attention = SelfAttention(384, 128)
     # attention_output = self_attention(img_embedding)
