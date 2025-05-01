@@ -137,10 +137,16 @@ class DiTBlock(torch.nn.Module):
         self.layer_norm_bf_mh_crs_attn = torch.nn.LayerNorm(embedding_dim)
         self.mh_crs_attn    =   MultiHeadedCrossAttention(embedding_dim, embedding_dim//num_heads, num_heads)
 
+        self.layer_norm_bf_feedforward = torch.nn.LayerNorm(embedding_dim)
+        self.pointwise_feedforward = torch.nn.Sequential(
+                                                            torch.nn.Linear(embedding_dim, 4 * embedding_dim),  # Expand
+                                                            torch.nn.SiLU(),                # Activation
+                                                            torch.nn.Linear(4 * embedding_dim, embedding_dim)   # Project back
+                                                        )
     def forward(self, img_embedding: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
-        # TODO: Forward function must also take in conditions
         img_embedding = img_embedding + self.mh_slf_attn(self.layer_norm_bf_mh_slf_attn(img_embedding)) # first skip connection
         img_embedding   =   img_embedding + self.mh_crs_attn(self.layer_norm_bf_mh_crs_attn(img_embedding), context) # Second skip connection
+        img_embedding = img_embedding + self.pointwise_feedforward(self.layer_norm_bf_feedforward(img_embedding)) # Final output
         return img_embedding
 
 if __name__ == '__main__':
