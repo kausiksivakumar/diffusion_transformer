@@ -63,7 +63,7 @@ class ContextEmbeddings(torch.nn.Module):
 
     def forward(self, label:torch.Tensor, t:torch.Tensor) -> torch.Tensor:
         time_embedding = self.timestep_embedding(t).unsqueeze(1) # (B,1, d)
-        class_embedding =   self.class_embedding(label).unsqueeze(1) # (B,1, d)
+        class_embedding =   self.class_embedding(label) # (B,1, d)
         context_embeddings = torch.cat([time_embedding, class_embedding], dim = 1) # (B, 2, d)
         return context_embeddings
 
@@ -99,8 +99,35 @@ class MultiHeadedSelfAttention(torch.nn.Module):
     def forward(self, image_embedding: torch.Tensor) -> torch.Tensor:
         return torch.cat([slf_attn_layer(image_embedding) for slf_attn_layer in self.self_attention_layers], dim=-1) # (B, T, C)
 
+class CrossAttention(torch.nn.Module):
+    '''
+    Image: What class and time should I attend to (Query)
+    Context: Here's my key and val
+    '''
+    def __init__(self,embedding_dim:int, head_size:int) -> None:
+        super().__init__()
+        self.q = torch.nn.Linear(embedding_dim, head_size)
+        self.k = torch.nn.Linear(embedding_dim, head_size)
+        self.v = torch.nn.Linear(embedding_dim, head_size)
 
-class DiT(torch.nn.Module):
+    def forward(self, img_embedding:torch.Tensor, context: torch.Tensor) -> torch.Tensor:
+        query_img = self.q(img_embedding) # (B, T, C)
+        key_context = self.k(context) # (B, 2, C)
+        val_context = self.v(context) # (B, 2, C)
+        B, T, C = query_img.shape
+        wei = (query_img @ key_context.permute(0,2,1))* (C**-0.5) #(B, T, 2)
+        wei = F.softmax(wei,dim = -1) # (B, T, 2)
+        return wei @ val_context # (B, T, C)
+
+class MultiHeadedCrossAttention(torch.nn.Module):
+    def __init__(self, embedding_dim:int, head_size: int, num_heads:int):
+        super().__init__()
+        self.cross_attention_layers = torch.nn.ModuleList([CrossAttention(embedding_dim, head_size) for _ in range(num_heads)])
+    
+    def forward(self, image_embedding: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
+        return torch.cat([slf_attn_layer(image_embedding, context) for slf_attn_layer in self.cross_attention_layers], dim=-1) # (B, T, C)
+
+class DiTBlock(torch.nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int) -> None:
         super().__init__()
         assert embedding_dim % num_heads == 0, f"Embedding dim must be divisible by num_heads, but got {embedding_dim=}, {num_heads=}"
@@ -108,11 +135,12 @@ class DiT(torch.nn.Module):
         self.mh_slf_attn = MultiHeadedSelfAttention(embedding_dim, embedding_dim//num_heads, num_heads)
         
         self.layer_norm_bf_mh_crs_attn = torch.nn.LayerNorm(embedding_dim)
+        self.mh_crs_attn    =   MultiHeadedCrossAttention(embedding_dim, embedding_dim//num_heads, num_heads)
 
-    def forward(self, img_embedding: torch.Tensor) -> torch.Tensor:
+    def forward(self, img_embedding: torch.Tensor, context: torch.Tensor) -> torch.Tensor:
         # TODO: Forward function must also take in conditions
-        img_embedding = img_embedding + self.mh_slf_attn(self.layer_norm_bf_mh_slf_attn(img_embedding)) 
-
+        img_embedding = img_embedding + self.mh_slf_attn(self.layer_norm_bf_mh_slf_attn(img_embedding)) # first skip connection
+        img_embedding   =   img_embedding + self.mh_crs_attn(self.layer_norm_bf_mh_crs_attn(img_embedding), context) # Second skip connection
         return img_embedding
 
 if __name__ == '__main__':
@@ -121,12 +149,16 @@ if __name__ == '__main__':
     from diffusers.models import AutoencoderKL
     patchifyer = ImagePatchifyer()
     data = ImageNetDataset()
+    context_emb = ContextEmbeddings()
     vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
     vae.eval()
     dataloader = DataLoader(data, batch_size=1,
                         shuffle=True, num_workers=0)
     next_img_sample = next(iter(dataloader))    
     img = next_img_sample["img"]
+    label = next_img_sample["label"]
+    t = torch.Tensor([1])
+    context = context_emb(label, t)
     with torch.no_grad():
         # How to get latent dim
         z = vae.encode(img).latent_dist.sample() * 0.18215
@@ -135,8 +167,8 @@ if __name__ == '__main__':
     embedding_dim = C
     num_heads = 8
     head_dim = C//8
-    dit = DiT(embedding_dim, num_heads)
-    output = dit(img_embedding)
+    dit = DiTBlock(embedding_dim, num_heads)
+    output = dit(img_embedding, context)
     print(output.shape)
 
     # multi_headed_attention = MultiHeadedSelfAttention(embedding_dim, head_dim, num_heads)
