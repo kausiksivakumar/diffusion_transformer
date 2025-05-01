@@ -149,6 +149,33 @@ class DiTBlock(torch.nn.Module):
         img_embedding = img_embedding + self.pointwise_feedforward(self.layer_norm_bf_feedforward(img_embedding)) # Final output
         return img_embedding
 
+class DiT(torch.nn.Module):
+    def __init__(self, embedding_dim:int, num_heads:int, dit_depth:int, patch_dim:int) -> None:
+        super().__init__()
+        self.img_patchifyer = ImagePatchifyer()
+        self.context_embedder = ContextEmbeddings()
+        self.dit_blocks = torch.nn.ModuleList([DiTBlock(embedding_dim=embedding_dim, num_heads=num_heads) for _ in range(dit_depth)])
+        self.layer_norm = torch.nn.LayerNorm(embedding_dim)
+        self.noise_linear = torch.nn.Linear(embedding_dim, patch_dim)
+        self.noise_cov_linear = torch.nn.Linear(embedding_dim, patch_dim)
+    
+    def forward(self, latent_img: torch.Tensor, cls_label:torch.Tensor, time: torch.Tensor) -> torch.Tensor:
+        img_embedding = self.img_patchifyer(latent_img)
+        context = self.context_embedder(cls_label, time)
+        for d in range(len(self.dit_blocks)):
+            img_embedding = self.dit_blocks[d](img_embedding, context)
+
+        img_embedding = self.layer_norm(img_embedding)
+        noise = self.noise_linear(img_embedding)
+        noise_cov = self.noise_cov_linear(img_embedding)
+
+        return self.fold_back(noise), self.fold_back(noise_cov)
+
+    def fold_back(self, tns: torch.Tensor) -> torch.Tensor:
+        tns = tns.permute(0,2,1) # (B, C, T)
+        fold = torch.nn.Fold(output_size=(32,32), kernel_size=2, stride=2)
+        return fold(tns) # Should be (B, C, 32, 32) -> should be (B, 4, 32, 32)
+    
 if __name__ == '__main__':
     from data import ImageNetDataset
     from torch.utils.data import DataLoader
@@ -170,12 +197,15 @@ if __name__ == '__main__':
         z = vae.encode(img).latent_dist.sample() * 0.18215
     img_embedding = patchifyer(z)
     B, T, C = img_embedding.shape
-    embedding_dim = C
-    num_heads = 8
-    head_dim = C//8
-    dit = DiTBlock(embedding_dim, num_heads)
-    output = dit(img_embedding, context)
-    print(output.shape)
+    dit = DiT(embedding_dim=C, num_heads=6, dit_depth=12, patch_dim=16)
+    output = dit(z, label, t)
+    print(output[0].shape)
+    # embedding_dim = C
+    # num_heads = 8
+    # head_dim = C//8
+    # dit = DiTBlock(embedding_dim, num_heads)
+    # output = dit(img_embedding, context)
+    # print(output.shape)
 
     # multi_headed_attention = MultiHeadedSelfAttention(embedding_dim, head_dim, num_heads)
     # mha_output = multi_headed_attention(img_embedding)
