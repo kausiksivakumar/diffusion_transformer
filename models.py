@@ -2,6 +2,9 @@ import torch
 import numpy as np
 from utils import get_sinusoidal_position_embeddings, get_timestep_embedding
 import torch.nn.functional as F
+# CONSTANTS
+# embedding dim = 384 
+
 class ImagePatchifyer(torch.nn.Module):
     
     def __init__(self, latent_rep_div: int = 8) -> None:
@@ -85,6 +88,18 @@ class SelfAttention(torch.nn.Module):
         output = wei @ value_tensor # (B, T, head_size)
         return output
 
+class MultiHeadedSelfAttention(torch.nn.Module):
+    '''
+    Multiheaded self attention 
+    '''
+    def __init__(self, embedding_dim:int, head_size: int, num_heads:int):
+        super().__init__()
+        self.self_attention_layers = torch.nn.ModuleList([SelfAttention(embedding_dim, head_size) for _ in range(num_heads)])
+    
+    def forward(self, image_embedding: torch.Tensor) -> torch.Tensor:
+        return torch.cat([slf_attn_layer(image_embedding) for slf_attn_layer in self.self_attention_layers], dim=-1) # (B, T, C)
+
+
 class DiT(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -105,10 +120,17 @@ if __name__ == '__main__':
         # How to get latent dim
         z = vae.encode(img).latent_dist.sample() * 0.18215
     img_embedding = patchifyer(z)
+    B, T, C = img_embedding.shape
+    embedding_dim = C
+    num_heads = 8
+    head_dim = C//8
+    multi_headed_attention = MultiHeadedSelfAttention(embedding_dim, head_dim, num_heads)
+    mha_output = multi_headed_attention(img_embedding)
+    print(mha_output.shape)
 
-    self_attention = SelfAttention(384, 128)
-    attention_output = self_attention(img_embedding)
-    print(attention_output.shape)
+    # self_attention = SelfAttention(384, 128)
+    # attention_output = self_attention(img_embedding)
+    # print(attention_output.shape)
 
     # output = patchifyer(z)
 
