@@ -25,8 +25,8 @@ def main(cfg: DictConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() and cfg.train.use_gpu_if_available else "cpu")
 
     # Load all modules used
-    dit = DiT(embedding_dim=384, num_heads=6, dit_depth=12, patch_dim=16) # TODO: Maybe port these to Hydra as well?
-    vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+    dit = DiT(embedding_dim=384, num_heads=6, dit_depth=12, patch_dim=16).to(device) # TODO: Maybe port these to Hydra as well?
+    vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").to(device)
     vae.eval()
     train_dataloader = DataLoader(ImageNetDataset(data_path=Path(cfg.data.path + "/train")), batch_size=cfg.train.batch_size,
                         shuffle=True, num_workers=0)
@@ -37,7 +37,7 @@ def main(cfg: DictConfig) -> None:
     # First get alphas, betas, and alpha_cumprod
     betas = torch.linspace(start = 0.0001, end = 0.02, steps=cfg.train.timesteps) # Choose noise param
     alphas = 1 - betas
-    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_cumprod = torch.cumprod(alphas, dim=0).to(device)
     
     # Start train loop
     print(f"Training for {cfg.train.epochs}")
@@ -47,9 +47,9 @@ def main(cfg: DictConfig) -> None:
         # Sample from dataloader
         total_train_loss = 0.0
         for sample in train_dataloader:
-            imgs = sample['img']
-            labels = sample['label']
-            ts = torch.randint(low=0, high=cfg.train.timesteps, size =(cfg.train.batch_size,))
+            imgs = sample['img'].to(device)
+            labels = sample['label'].to(device)
+            ts = torch.randint(low=0, high=cfg.train.timesteps, size =(cfg.train.batch_size,)).to(device)
             
             # Get noised latent from image 
             with torch.no_grad():
@@ -68,9 +68,9 @@ def main(cfg: DictConfig) -> None:
             total_val_loss = 0.0
             dit.eval()
             for sample in val_dataloader:
-                imgs = sample['img']
-                labels = sample['label']
-                ts = torch.randint(low=0, high=cfg.train.timesteps, size =(cfg.train.batch_size,))
+                imgs = sample['img'].to(device)
+                labels = sample['label'].to(device)
+                ts = torch.randint(low=0, high=cfg.train.timesteps, size =(len(imgs),)).to(device)
                 
                 # Get noised latent from image 
                 with torch.no_grad():
@@ -93,7 +93,7 @@ def main(cfg: DictConfig) -> None:
             wandb.log({"train_loss": train_loss.item(), "val_loss": total_val_loss.item(), "step": itr})
 
     wandb.finish()
-    
+
 if __name__ == '__main__':
     main()
     # patchifyer = ImagePatchifyer()

@@ -12,7 +12,7 @@ train:
   use_gpu_if_available: true
 
 val:
-  freq: 10
+  freq: 1
 
 wandb:
   enable: false

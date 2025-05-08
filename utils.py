@@ -17,7 +17,7 @@ def get_sinusoidal_position_embeddings(token_dim: int, embedding_dim:int) -> tor
 
 def get_timestep_embedding(t:torch.Tensor, embedding_dim:int=128) -> torch.Tensor:
     assert len(t.shape) == 1, f"Passed value should be a flattened tensor t, got {t.shape}"
-    t = t.unsqueeze(1)
+    t = t.unsqueeze(1).to("cpu")
     denominator = torch.pow(10000, 2*torch.arange(0, embedding_dim//2)/embedding_dim)
     timestep_embedding = torch.zeros(t.shape[0], embedding_dim)
     timestep_embedding[:,0::2] = torch.sin(t/denominator)

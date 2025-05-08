@@ -31,7 +31,7 @@ class ImagePatchifyer(torch.nn.Module):
         B, T, d = img_tokens.shape
         with torch.no_grad():
             # No need for gradient of position embeddings 
-            pos_embeddings = get_sinusoidal_position_embeddings(token_dim=T, embedding_dim=d)
+            pos_embeddings = get_sinusoidal_position_embeddings(token_dim=T, embedding_dim=d).to(latent_z.device)
             img_tokens = img_tokens + pos_embeddings
         return img_tokens
 
@@ -48,7 +48,7 @@ class TimeStepEmbedding(torch.nn.Module):
 
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            timestep__embedding = get_timestep_embedding(t=t) # (B, 128)
+            timestep__embedding = get_timestep_embedding(t=t).to(t.device) # (B, 128)
         timestep__embedding = self._linear_layer_timestep(timestep__embedding) # (B, d)
         return timestep__embedding
 
