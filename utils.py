@@ -24,6 +24,15 @@ def get_timestep_embedding(t:torch.Tensor, embedding_dim:int=128) -> torch.Tenso
     timestep_embedding[:,1::2] = torch.cos(t/denominator)
     return timestep_embedding
 
+def add_noise_to_latent_rep(ts: torch.Tensor, alphas_cumprod: torch.Tensor, z_0: torch.Tensor) -> torch.Tensor:
+    assert len(ts) == len(z_0), f"We need to have ts to be same as the batch_size. But got {len(ts)=}, {len(z)=}"
+    alphas_cumprod_sample = alphas_cumprod[ts]
+    sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod_sample)
+    sqrt_one_minus_alphas_cumprod = torch.sqrt(1-alphas_cumprod_sample)
+    random_noise = torch.rand_like(input=z_0)
+    z_t = sqrt_alphas_cumprod[:, None, None, None]*z_0 + sqrt_one_minus_alphas_cumprod[:, None, None, None]*random_noise
+    return z_t, random_noise
+    
 if __name__ == '__main__':
     # print(get_sinusoidal_position_embeddings(8, 4))
     print(get_timestep_embedding(torch.tensor([0,1]), 128))

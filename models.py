@@ -168,8 +168,8 @@ class DiT(torch.nn.Module):
         img_embedding = self.layer_norm(img_embedding)
         noise = self.noise_linear(img_embedding)
         noise_cov = self.noise_cov_linear(img_embedding)
-
-        return self.fold_back(noise), self.fold_back(noise_cov)
+        log_var = torch.clamp(torch.exp(0.5*noise_cov), -20, 0) # predict log variance so you dont get negative var, clamp it to reasonable vals
+        return self.fold_back(noise), self.fold_back(log_var)
 
     def fold_back(self, tns: torch.Tensor) -> torch.Tensor:
         tns = tns.permute(0,2,1) # (B, C, T)
