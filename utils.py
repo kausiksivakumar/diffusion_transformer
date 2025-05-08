@@ -25,7 +25,7 @@ def get_timestep_embedding(t:torch.Tensor, embedding_dim:int=128) -> torch.Tenso
     return timestep_embedding
 
 def add_noise_to_latent_rep(ts: torch.Tensor, alphas_cumprod: torch.Tensor, z_0: torch.Tensor) -> torch.Tensor:
-    assert len(ts) == len(z_0), f"We need to have ts to be same as the batch_size. But got {len(ts)=}, {len(z)=}"
+    assert len(ts) == len(z_0), f"We need to have ts to be same as the batch_size. But got {len(ts)=}, {len(z_0)=}"
     alphas_cumprod_sample = alphas_cumprod[ts]
     sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod_sample)
     sqrt_one_minus_alphas_cumprod = torch.sqrt(1-alphas_cumprod_sample)

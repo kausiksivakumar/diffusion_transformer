@@ -11,6 +11,10 @@ import torch
 from utils import add_noise_to_latent_rep
 import torch.nn.functional as F
 from pathlib import Path
+import logging
+
+# Get a logger 
+log = logging.getLogger(__name__)
 
 @hydra.main(config_path="configs", config_name="config")
 def main(cfg: DictConfig) -> None:
@@ -40,7 +44,7 @@ def main(cfg: DictConfig) -> None:
     alphas_cumprod = torch.cumprod(alphas, dim=0).to(device)
     
     # Start train loop
-    print(f"Training for {cfg.train.epochs}")
+    log.info(f"Training for {cfg.train.epochs}")
     best_val_loss = float('inf')
     for itr in range(cfg.train.epochs):
         dit.train()
@@ -49,12 +53,12 @@ def main(cfg: DictConfig) -> None:
         for sample in train_dataloader:
             imgs = sample['img'].to(device)
             labels = sample['label'].to(device)
-            ts = torch.randint(low=0, high=cfg.train.timesteps, size =(cfg.train.batch_size,)).to(device)
             
             # Get noised latent from image 
             with torch.no_grad():
                 z_0 = vae.encode(imgs).latent_dist.sample() * 0.18215
                 # adding noise
+                ts = torch.randint(low=0, high=cfg.train.timesteps, size =(len(z_0),)).to(device)
                 z_t, epsilon = add_noise_to_latent_rep(ts=ts, alphas_cumprod=alphas_cumprod, z_0=z_0)
             
             pred_noise, log_var = dit(z_t, labels, ts)
@@ -70,11 +74,12 @@ def main(cfg: DictConfig) -> None:
             for sample in val_dataloader:
                 imgs = sample['img'].to(device)
                 labels = sample['label'].to(device)
-                ts = torch.randint(low=0, high=cfg.train.timesteps, size =(len(imgs),)).to(device)
                 
                 # Get noised latent from image 
                 with torch.no_grad():
                     z_0 = vae.encode(imgs).latent_dist.sample() * 0.18215
+                    ts = torch.randint(low=0, high=cfg.train.timesteps, size =(len(z_0),)).to(device)
+                    log.debug(f"[val] {ts.shape=}, {z_0.shape=}, {imgs.shape=}, {labels.shape=}")
                     # adding noise
                     z_t, epsilon = add_noise_to_latent_rep(ts=ts, alphas_cumprod=alphas_cumprod, z_0=z_0)
                 
@@ -87,7 +92,7 @@ def main(cfg: DictConfig) -> None:
             if total_val_loss < best_val_loss:
                 # Save model
                 torch.save(dit.state_dict(), f"epoch_{itr}_loss_{round(total_val_loss,2)}.pth")
-            print(f"[{itr+1}/{cfg.train.epochs}] Train_loss:{train_loss}, Val_loss:{total_val_loss}")
+            log.info(f"[{itr+1}/{cfg.train.epochs}] Train_loss:{train_loss}, Val_loss:{total_val_loss}")
 
         if cfg.wandb.enable:
             wandb.log({"train_loss": train_loss.item(), "val_loss": total_val_loss.item(), "step": itr})
