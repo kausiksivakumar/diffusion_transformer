@@ -95,7 +95,7 @@ def main(cfg: DictConfig) -> None:
             log.info(f"[{itr+1}/{cfg.train.epochs}] Train_loss:{train_loss}, Val_loss:{total_val_loss}")
 
         if cfg.wandb.enable:
-            wandb.log({"train_loss": train_loss.item(), "val_loss": total_val_loss.item(), "step": itr})
+            wandb.log({"train_loss": total_train_loss, "val_loss": total_val_loss, "step": itr})
 
     wandb.finish()
 

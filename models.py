@@ -2,19 +2,18 @@ import torch
 import numpy as np
 from utils import get_sinusoidal_position_embeddings, get_timestep_embedding
 import torch.nn.functional as F
+from typing import Tuple
 # CONSTANTS
 # embedding dim = 384 
 
 class ImagePatchifyer(torch.nn.Module):
     
-    def __init__(self, latent_rep_div: int = 8) -> None:
-        # TODO: I need to use a pretrained autoencoder from stable diffusion and pass that as latent
+    def __init__(self, patch_size: int = 2) -> None: # hardcoded to 2x2 patches for now
         super().__init__()
         '''
         Assumes all images are of size 256 x 256
         '''
-        assert 256% latent_rep_div == 0, "We need the image dims to be divisible by patch size for effective pathification"
-        patch_size = 2 # hardcoded for now, we are only working with patch_size = 2 for this reimplementation
+        assert 256% patch_size == 0, "We need the image dims to be divisible by patch size for effective pathification"
         
         self.unfold = torch.nn.Unfold(kernel_size=patch_size, stride=patch_size) 
 
@@ -27,7 +26,6 @@ class ImagePatchifyer(torch.nn.Module):
         latent_img_patches = self.unfold(latent_z).permute(0,2,1) # (B, 256, 16)
         img_tokens = self.linear_layer(latent_img_patches) # (B, T , d) --> (B, T, 384)
         
-        # TODO: Add position embeddings
         B, T, d = img_tokens.shape
         with torch.no_grad():
             # No need for gradient of position embeddings 
@@ -39,7 +37,6 @@ class TimeStepEmbedding(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
         # 128 is the timestep embedding (non learned), the mlp projection adds non-linearity
-        self._linear_layer_timestep = torch.nn.Linear(128, 384)
         self.timestep_embed = torch.nn.Sequential(
                             torch.nn.Linear(128, 384),
                             torch.nn.SiLU(),
@@ -49,7 +46,7 @@ class TimeStepEmbedding(torch.nn.Module):
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
             timestep__embedding = get_timestep_embedding(t=t).to(t.device) # (B, 128)
-        timestep__embedding = self._linear_layer_timestep(timestep__embedding) # (B, d)
+        timestep__embedding = self.timestep_embed(timestep__embedding) # (B, d)
         return timestep__embedding
 
 class ContextEmbeddings(torch.nn.Module):
@@ -158,18 +155,19 @@ class DiT(torch.nn.Module):
         self.layer_norm = torch.nn.LayerNorm(embedding_dim)
         self.noise_linear = torch.nn.Linear(embedding_dim, patch_dim)
         self.noise_cov_linear = torch.nn.Linear(embedding_dim, patch_dim)
-    
-    def forward(self, latent_img: torch.Tensor, cls_label:torch.Tensor, time: torch.Tensor) -> torch.Tensor:
-        img_embedding = self.img_patchifyer(latent_img)
+
+    def forward(self, latent_img: torch.Tensor, cls_label:torch.Tensor, time: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        img_embedding = self.img_patchifyer(latent_img) # (B, T, C)
         context = self.context_embedder(cls_label, time)
         for d in range(len(self.dit_blocks)):
             img_embedding = self.dit_blocks[d](img_embedding, context)
 
         img_embedding = self.layer_norm(img_embedding)
         noise = self.noise_linear(img_embedding)
-        noise_cov = self.noise_cov_linear(img_embedding)
-        log_var = torch.clamp(torch.exp(0.5*noise_cov), -20, 0) # predict log variance so you dont get negative var, clamp it to reasonable vals
-        return self.fold_back(noise), self.fold_back(log_var)
+        noise_logvar = self.noise_cov_linear(img_embedding)
+        noise_logvar = torch.clamp(noise_logvar, -20, 0) # predict log variance so you dont get negative var, clamp it to reasonable vals
+        noise_std = torch.exp(0.5 * noise_logvar) 
+        return self.fold_back(noise), self.fold_back(noise_std)
 
     def fold_back(self, tns: torch.Tensor) -> torch.Tensor:
         tns = tns.permute(0,2,1) # (B, C, T)

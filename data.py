@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from torchvision import transforms
 from PIL import Image
-DATA_PATH = "/home/ma/kausik/workspace/datasets/ImageNet/train"
+DATA_PATH = "/net/acadia15a/data/kausik/imagenet_tiny"
 
 def get_all_jpegs_in_path(root_folder: Path) -> List[Path] :
     root = Path(root_folder)
@@ -52,5 +52,5 @@ if __name__ == '__main__':
             img = img.permute(1,2,0).numpy()
             img = (img * 255).clip(0, 255).astype(np.uint8)
         print(f"Saving image with shape {img.shape}")
-        cv2.imwrite(f"tmp/{idx}_{label}.png", img)
+        cv2.imwrite(f"tmp/{idx}_{label.item()}.png", img)
 

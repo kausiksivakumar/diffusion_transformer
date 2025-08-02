@@ -2,7 +2,7 @@ defaults:
   - _self_
 
 data:
-  path: "/home/ma/kausik/workspace/datasets/ImageNet"
+  path: "/net/acadia15a/data/kausik/imagenet_tiny"
 
 train:
   lr: 0.0001
@@ -15,9 +15,9 @@ val:
   freq: 1
 
 wandb:
-  enable: false
+  enable: true
   project: "diT"
-  run_name: "tmp"
+  run_name: "train_0"
 
 
 model:
